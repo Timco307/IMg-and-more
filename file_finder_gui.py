@@ -17,6 +17,13 @@ def get_file_size(path):
     except Exception:
         return 0
 
+def format_size(size):
+    for unit in ['bytes', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024.0:
+            break
+        size /= 1024.0
+    return f"{size:.2f} {unit}"
+
 class FileFinderApp:
     def __init__(self, root):
         self.root = root
@@ -95,6 +102,8 @@ class FileFinderApp:
         # Listbox and scrollbar
         self.result_list = tk.Listbox(listbox_frame, width=90, height=20, selectmode="extended")
         self.result_list.pack(side="left", fill="both", expand=True)
+        # Add right-click menu
+        self.result_list.bind("<Button-3>", self.show_context_menu)
         scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=self.result_list.yview)
         scrollbar.pack(side="right", fill="y")
         self.result_list.config(yscrollcommand=scrollbar.set)
@@ -151,6 +160,43 @@ class FileFinderApp:
         for step in self.steps:
             step.grid(row=0, column=0, sticky="nsew")
             step.grid_remove()
+
+    def show_context_menu(self, event):
+        selection = self.result_list.curselection()
+        if not selection:
+            return
+        self.context_menu = tk.Menu(self.root, tearoff=0)
+        self.context_menu.add_command(label="Delete from list", command=self.delete_from_list)
+        self.context_menu.add_command(label="Delete from system", command=self.delete_from_system)
+        self.context_menu.post(event.x_root, event.y_root)
+
+    def delete_from_list(self):
+        selection = self.result_list.curselection()
+        if selection:
+            files_to_delete = [self.result_list.get(i).split("  [")[0] for i in selection]
+            for f in files_to_delete:
+                self.files_found.remove(f)
+            for i in reversed(selection):
+                self.result_list.delete(i)
+            self.update_progress()
+
+    def delete_from_system(self):
+        selection = self.result_list.curselection()
+        if selection:
+            files_to_delete = [self.result_list.get(i).split("  [")[0] for i in selection]
+            if messagebox.askyesno("Delete Files", f"Are you sure you want to permanently delete {len(files_to_delete)} files from your system?"):
+                errors = []
+                for f in files_to_delete:
+                    try:
+                        os.remove(f)
+                        self.files_found.remove(f)
+                    except Exception as e:
+                        errors.append(f"{f}: {e}")
+                for i in reversed(selection):
+                    self.result_list.delete(i)
+                self.update_progress()
+                if errors:
+                    messagebox.showerror("Error", "\n".join(errors))
 
     def add_folder_row(self, path=""):
         idx = len(self.folder_entries)
@@ -356,11 +402,16 @@ class FileFinderApp:
         self.total_size = sum(get_file_size(f) for f in found)
         self.result_list.delete(0, tk.END)
         for f in found:
-            self.result_list.insert(tk.END, f)
-        self.progress.config(text=f"Found {len(found)} files, total size: {self.total_size/1024/1024:.2f} MB")
+            size = get_file_size(f)
+            self.result_list.insert(tk.END, f"{f}  [{format_size(size)}]")
+        self.update_progress()
         self.check_duplicates()
         if not found:
             messagebox.showinfo("No Files Found", "No files matching your criteria were found. Try a different folder or file type.")
+
+    def update_progress(self):
+        self.total_size = sum(get_file_size(f) for f in self.files_found)
+        self.progress.config(text=f"Found {len(self.files_found)} files, total size: {format_size(self.total_size)}")
 
     def check_duplicates(self):
         file_map = defaultdict(list)
