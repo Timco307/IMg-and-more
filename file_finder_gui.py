@@ -132,7 +132,7 @@ class FileFinderApp:
 
         # Step 4: Copy options
         step4 = ttk.Frame(self.main_frame)
-        ttk.Label(step4, text="4. Copy found files to:").grid(row=0, column=0, sticky="w")
+        ttk.Label(step4, text="4. Copy/Move found files to:").grid(row=0, column=0, sticky="w")
         ttk.Entry(step4, textvariable=self.dest_folder, width=40).grid(row=0, column=1, sticky="ew")
         ttk.Button(step4, text="Browse", command=self.browse_dest).grid(row=0, column=2)
         ttk.Checkbutton(step4, text="Keep folder structure", variable=self.keep_structure).grid(row=1, column=0, columnspan=2, sticky="w")
@@ -143,7 +143,9 @@ class FileFinderApp:
         ttk.Radiobutton(step4, text="Overwrite", variable=self.overwrite_mode, value="overwrite").grid(row=2, column=2, sticky="w")
         # Add auto-rename option
         ttk.Radiobutton(step4, text="Auto-rename (add (1), (2), ...)", variable=self.overwrite_mode, value="autorename").grid(row=2, column=3, sticky="w")
-        ttk.Button(step4, text="Copy Files", command=self.copy_files).grid(row=3, column=3, pady=10, sticky="e")
+        # Add copy and move buttons
+        ttk.Button(step4, text="Copy Files", command=lambda: self.copy_files(move=False)).grid(row=3, column=2, pady=10, sticky="e")
+        ttk.Button(step4, text="Move Files", command=lambda: self.copy_files(move=True)).grid(row=3, column=3, pady=10, sticky="e")
         step4.columnconfigure(1, weight=1)
         self.steps.append(step4)
 
@@ -448,7 +450,7 @@ class FileFinderApp:
         self.duplicates.pop(0)
         self.update_duplicate_ui()
 
-    def copy_files(self):
+    def copy_files(self, move=False):
         dest = self.dest_folder.get()
         if not dest or not os.path.isdir(dest):
             messagebox.showerror("Error", "Please select a valid destination folder.")
@@ -457,7 +459,7 @@ class FileFinderApp:
         overwrite = self.overwrite_mode.get()
         # Only copy selected files if user made a selection, else all
         selected = self.result_list.curselection()
-        files_to_copy = [self.result_list.get(i) for i in selected] if selected else self.files_found
+        files_to_copy = [self.result_list.get(i).split("  [")[0] for i in selected] if selected else self.files_found
         if not files_to_copy:
             messagebox.showerror("Error", "No files selected to copy.")
             return
@@ -470,7 +472,7 @@ class FileFinderApp:
                 if f.startswith(b):
                     return b
             return base_folders[0] if base_folders else ""
-        print(f"[DEBUG] Copying {len(files_to_copy)} files to {dest} (overwrite mode: {overwrite})")
+        print(f"[DEBUG] Copying {len(files_to_copy)} files to {dest} (overwrite mode: {overwrite}, move: {move})")
         for f in files_to_copy:
             base_folder = get_base_folder(f)
             rel_path = os.path.relpath(f, base_folder) if keep_struct else os.path.basename(f)
@@ -482,7 +484,10 @@ class FileFinderApp:
                     continue
                 elif overwrite == "overwrite":
                     try:
-                        shutil.copy2(f, dest_path)
+                        if move:
+                            shutil.move(f, dest_path)
+                        else:
+                            shutil.copy2(f, dest_path)
                         copied += 1
                         print(f"[DEBUG] Overwrote: {dest_path}")
                     except Exception as e:
@@ -491,7 +496,10 @@ class FileFinderApp:
                 elif overwrite == "autorename":
                     dest_path = self.get_autorename_path(dest_path)
                     try:
-                        shutil.copy2(f, dest_path)
+                        if move:
+                            shutil.move(f, dest_path)
+                        else:
+                            shutil.copy2(f, dest_path)
                         copied += 1
                         print(f"[DEBUG] Auto-renamed and copied: {dest_path}")
                     except Exception as e:
@@ -501,7 +509,10 @@ class FileFinderApp:
                     continue
             else:
                 try:
-                    shutil.copy2(f, dest_path)
+                    if move:
+                        shutil.move(f, dest_path)
+                    else:
+                        shutil.copy2(f, dest_path)
                     copied += 1
                     print(f"[DEBUG] Copied: {dest_path}")
                 except Exception as e:
@@ -517,6 +528,8 @@ class FileFinderApp:
                 with open(errfile, "w", encoding="utf-8") as f:
                     for line in errors:
                         f.write(line + "\n")
+        if move and not errors:
+            self.find_files()
 
     def get_autorename_path(self, path):
         base, ext = os.path.splitext(path)
