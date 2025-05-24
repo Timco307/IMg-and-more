@@ -52,14 +52,10 @@ class FileFinderApp:
         # Step 0: Folder selection
         step0 = ttk.Frame(self.main_frame)
         ttk.Label(step0, text="1. Choose drives or folders:").grid(row=0, column=0, sticky="w")
-        # Frame for dynamic folder rows
         self.folder_rows_frame = ttk.Frame(step0)
         self.folder_rows_frame.grid(row=1, column=0, columnspan=5, sticky="ew")
-        # Always start with one row
-        if not self.folder_entries:
-            self.add_folder_row()
         # "+" button to add folder row
-        ttk.Button(step0, text="+", width=2, command=lambda: self.add_folder_row("")).grid(row=2, column=1, sticky="w")
+        ttk.Button(step0, text="+", width=2, command=self.add_folder_row).grid(row=2, column=1, sticky="w")
         # "-" button to remove selected folder row
         ttk.Button(step0, text="-", width=2, command=self.remove_selected_folder_row).grid(row=2, column=2, sticky="w")
         # Add quick access to Desktop/Documents/Drives
@@ -175,39 +171,26 @@ class FileFinderApp:
         idx = self.selected_folder_idx.get()
         if 0 <= idx < len(self.folder_entries):
             print(f"[DEBUG] Removing folder row at index {idx} (path='{self.selected_folders[idx]}')")
-            # Remove widgets
             for widget in self.folder_entries[idx][1:]:
                 widget.destroy()
             del self.folder_entries[idx]
             del self.selected_folders[idx]
-            # Fix indices for remaining rows
             self.selected_folder_idx.set(0)
             self.update_folder_rows()
 
     def update_folder_rows(self):
-        # Update grid positions and values
         for i, (var, entry, browse_btn, radio) in enumerate(self.folder_entries):
             entry.grid(row=i, column=0, sticky="ew", pady=2)
             browse_btn.grid(row=i, column=1, padx=2)
             radio.grid(row=i, column=2, padx=2)
-            # Keep selected_folders in sync
             self.selected_folders[i] = var.get()
-            # Update radio value
             radio.config(value=i)
-        # Remove empty trailing rows except one
-        while len(self.folder_entries) > 1 and all(not v[0].get() for v in self.folder_entries[-1:]):
-            print(f"[DEBUG] Removing trailing empty folder row at index {len(self.folder_entries)-1}")
-            for widget in self.folder_entries[-1][1:]:
-                widget.destroy()
-            del self.folder_entries[-1]
-            del self.selected_folders[-1]
 
     def browse_folder_row(self, idx):
-        folder = filedialog.askdirectory()
-        if folder:
-            print(f"[DEBUG] Browsed folder for row {idx}: {folder}")
-            self.folder_entries[idx][0].set(folder)
-            self.selected_folders[idx] = folder
+        folders = filedialog.askdirectory()
+        if folders:
+            self.folder_entries[idx][0].set(folders)
+            self.selected_folders[idx] = folders
             self.update_folder_rows()
 
     def show_help(self):
@@ -245,7 +228,7 @@ class FileFinderApp:
 
     def next_step(self):
         # Only keep non-empty folders
-        self.selected_folders = [v[0].get() for v in self.folder_entries if v[0].get()]
+        self.selected_folders = [v[0].get() for v in self.folder_entries]
         if self.current_step == 0:
             if not self.selected_folders or not all(os.path.isdir(f) for f in self.selected_folders):
                 messagebox.showerror("Error", "Please select at least one valid folder.")
@@ -310,7 +293,7 @@ class FileFinderApp:
 
     def next_step(self):
         # Only keep non-empty folders
-        self.selected_folders = [v[0].get() for v in self.folder_entries if v[0].get()]
+        self.selected_folders = [v[0].get() for v in self.folder_entries]
         if self.current_step == 0:
             if not self.selected_folders or not all(os.path.isdir(f) for f in self.selected_folders):
                 messagebox.showerror("Error", "Please select at least one valid folder.")
