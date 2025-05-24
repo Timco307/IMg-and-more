@@ -43,11 +43,22 @@ class FileFinderApp:
         self.main_frame.rowconfigure(0, weight=1)
         self.main_frame.columnconfigure(0, weight=1)
 
+        # Add a help/info button
+        help_btn = ttk.Button(self.main_frame, text="Help / Info", command=self.show_help)
+        help_btn.grid(row=2, column=0, sticky="e", pady=(0, 5))
+
         # Step 0: Folder selection
         step0 = ttk.Frame(self.main_frame)
         ttk.Label(step0, text="1. Choose a drive or folder:").grid(row=0, column=0, sticky="w")
         ttk.Entry(step0, textvariable=self.selected_folder, width=40).grid(row=0, column=1, sticky="ew")
         ttk.Button(step0, text="Browse", command=self.browse_folder).grid(row=0, column=2)
+        # Add quick access to Desktop/Documents/Drives
+        quick_frame = ttk.Frame(step0)
+        quick_frame.grid(row=1, column=0, columnspan=3, sticky="w", pady=(5,0))
+        ttk.Button(quick_frame, text="Desktop", command=lambda: self.set_quick_folder("Desktop")).pack(side="left", padx=2)
+        ttk.Button(quick_frame, text="Documents", command=lambda: self.set_quick_folder("Documents")).pack(side="left", padx=2)
+        ttk.Button(quick_frame, text="C:\\", command=lambda: self.set_quick_folder("C:\\")).pack(side="left", padx=2)
+        ttk.Button(quick_frame, text="D:\\", command=lambda: self.set_quick_folder("D:\\")).pack(side="left", padx=2)
         step0.columnconfigure(1, weight=1)
         self.steps.append(step0)
 
@@ -59,6 +70,9 @@ class FileFinderApp:
         self.custom_entry = ttk.Entry(step1, textvariable=self.custom_types, width=30, state="disabled")
         self.custom_entry.grid(row=0, column=2, sticky="w")
         self.custom_entry.insert(0, ".txt,.pdf")
+        # Add tooltips for presets
+        preset_tip = ttk.Label(step1, text="Presets: Images, Videos, or both. Custom: comma-separated extensions (e.g. .docx,.pdf)", foreground="gray")
+        preset_tip.grid(row=1, column=0, columnspan=3, sticky="w")
         step1.columnconfigure(1, weight=1)
         self.steps.append(step1)
 
@@ -67,10 +81,24 @@ class FileFinderApp:
         ttk.Button(step2, text="Find Files!", command=self.find_files).grid(row=0, column=0, pady=10, sticky="w")
         self.progress = ttk.Label(step2, text="")
         self.progress.grid(row=1, column=0, columnspan=3, sticky="w")
-        self.result_list = tk.Listbox(step2, width=90, height=20)
-        self.result_list.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=5)
+        # Add a frame for the listbox and scrollbar
+        listbox_frame = ttk.Frame(step2)
+        listbox_frame.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=5)
         step2.rowconfigure(2, weight=1)
         step2.columnconfigure(0, weight=1)
+        # Listbox and scrollbar
+        self.result_list = tk.Listbox(listbox_frame, width=90, height=20, selectmode="extended")
+        self.result_list.pack(side="left", fill="both", expand=True)
+        scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=self.result_list.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.result_list.config(yscrollcommand=scrollbar.set)
+        # Add "Select All" and "Deselect All" buttons
+        sel_frame = ttk.Frame(step2)
+        sel_frame.grid(row=3, column=0, columnspan=3, sticky="w")
+        ttk.Button(sel_frame, text="Select All", command=lambda: self.result_list.select_set(0, tk.END)).pack(side="left", padx=2)
+        ttk.Button(sel_frame, text="Deselect All", command=lambda: self.result_list.select_clear(0, tk.END)).pack(side="left", padx=2)
+        # Add export list button
+        ttk.Button(sel_frame, text="Export List", command=self.export_file_list).pack(side="left", padx=2)
         self.steps.append(step2)
 
         # Step 3: Duplicate handling
@@ -81,6 +109,9 @@ class FileFinderApp:
         self.dup_choice.grid(row=0, column=1, sticky="ew")
         self.dup_keep_btn = ttk.Button(step3, text="Keep This", command=self.keep_duplicate)
         self.dup_keep_btn.grid(row=0, column=2, sticky="e")
+        # Add skip all duplicates button
+        self.dup_skip_btn = ttk.Button(step3, text="Skip All Duplicates", command=self.skip_all_duplicates)
+        self.dup_skip_btn.grid(row=1, column=0, columnspan=3, sticky="w", pady=(5,0))
         step3.columnconfigure(1, weight=1)
         self.steps.append(step3)
 
@@ -90,7 +121,12 @@ class FileFinderApp:
         ttk.Entry(step4, textvariable=self.dest_folder, width=40).grid(row=0, column=1, sticky="ew")
         ttk.Button(step4, text="Browse", command=self.browse_dest).grid(row=0, column=2)
         ttk.Checkbutton(step4, text="Keep folder structure", variable=self.keep_structure).grid(row=1, column=0, columnspan=2, sticky="w")
-        ttk.Button(step4, text="Copy Files", command=self.copy_files).grid(row=1, column=2, pady=10, sticky="e")
+        # Add overwrite/skip/cancel options
+        self.overwrite_mode = tk.StringVar(value="skip")
+        ttk.Label(step4, text="If file exists:").grid(row=2, column=0, sticky="w")
+        ttk.Radiobutton(step4, text="Skip", variable=self.overwrite_mode, value="skip").grid(row=2, column=1, sticky="w")
+        ttk.Radiobutton(step4, text="Overwrite", variable=self.overwrite_mode, value="overwrite").grid(row=2, column=2, sticky="w")
+        ttk.Button(step4, text="Copy Files", command=self.copy_files).grid(row=3, column=2, pady=10, sticky="e")
         step4.columnconfigure(1, weight=1)
         self.steps.append(step4)
 
@@ -107,6 +143,56 @@ class FileFinderApp:
         for step in self.steps:
             step.grid(row=0, column=0, sticky="nsew")
             step.grid_remove()
+
+    def show_help(self):
+        messagebox.showinfo(
+            "Help / Info",
+            "Welcome to Super Easy File Finder!\n\n"
+            "1. Choose a folder or drive to search.\n"
+            "2. Select file types (use presets or custom extensions).\n"
+            "3. Click 'Find Files!' to search. You can select/deselect files and export the list.\n"
+            "4. Handle duplicates if found.\n"
+            "5. Choose where to copy files and how to handle existing files.\n"
+            "6. Click 'Copy Files' to finish.\n\n"
+            "Tips:\n"
+            "- Use the quick access buttons for Desktop/Documents.\n"
+            "- Use 'Select All'/'Deselect All' for easy selection.\n"
+            "- If you get stuck, just go Back and try again!"
+        )
+
+    def set_quick_folder(self, which):
+        import pathlib
+        if which == "Desktop":
+            path = str(pathlib.Path.home() / "Desktop")
+        elif which == "Documents":
+            path = str(pathlib.Path.home() / "Documents")
+        else:
+            path = which
+        if os.path.isdir(path):
+            self.selected_folder.set(path)
+        else:
+            messagebox.showerror("Error", f"Folder not found: {path}")
+
+    def export_file_list(self):
+        if not self.files_found:
+            messagebox.showinfo("Export", "No files to export.")
+            return
+        file = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files","*.txt")])
+        if file:
+            with open(file, "w", encoding="utf-8") as f:
+                for item in self.files_found:
+                    f.write(item + "\n")
+            messagebox.showinfo("Export", f"File list exported to {file}")
+
+    def skip_all_duplicates(self):
+        # Remove all duplicates except the first in each group
+        for group in self.duplicates:
+            keep = group[0]
+            for f in group[1:]:
+                if f in self.files_found:
+                    self.files_found.remove(f)
+        self.duplicates = []
+        self.update_duplicate_ui()
 
     def show_step(self, idx):
         # Hide all steps
@@ -192,6 +278,8 @@ class FileFinderApp:
             self.result_list.insert(tk.END, f)
         self.progress.config(text=f"Found {len(found)} files, total size: {self.total_size/1024/1024:.2f} MB")
         self.check_duplicates()
+        if not found:
+            messagebox.showinfo("No Files Found", "No files matching your criteria were found. Try a different folder or file type.")
 
     def check_duplicates(self):
         file_map = defaultdict(list)
@@ -235,15 +323,46 @@ class FileFinderApp:
             return
         keep_struct = self.keep_structure.get()
         base_folder = self.selected_folder.get()
-        for f in self.files_found:
+        overwrite = self.overwrite_mode.get()
+        # Only copy selected files if user made a selection, else all
+        selected = self.result_list.curselection()
+        files_to_copy = [self.result_list.get(i) for i in selected] if selected else self.files_found
+        if not files_to_copy:
+            messagebox.showerror("Error", "No files selected to copy.")
+            return
+        errors = []
+        copied = 0
+        for f in files_to_copy:
             rel_path = os.path.relpath(f, base_folder) if keep_struct else os.path.basename(f)
             dest_path = os.path.join(dest, rel_path)
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            try:
-                shutil.copy2(f, dest_path)
-            except Exception as e:
-                messagebox.showerror("Copy Error", f"Failed to copy {f}: {e}")
-        messagebox.showinfo("Done", f"Copied {len(self.files_found)} files.")
+            if os.path.exists(dest_path):
+                if overwrite == "skip":
+                    continue
+                elif overwrite == "overwrite":
+                    try:
+                        shutil.copy2(f, dest_path)
+                        copied += 1
+                    except Exception as e:
+                        errors.append(f"{f}: {e}")
+                else:
+                    continue
+            else:
+                try:
+                    shutil.copy2(f, dest_path)
+                    copied += 1
+                except Exception as e:
+                    errors.append(f"{f}: {e}")
+        msg = f"Copied {copied} files."
+        if errors:
+            msg += f"\n{len(errors)} errors occurred."
+        messagebox.showinfo("Done", msg)
+        if errors:
+            errfile = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files","*.txt")], title="Save error log?")
+            if errfile:
+                with open(errfile, "w", encoding="utf-8") as f:
+                    for line in errors:
+                        f.write(line + "\n")
 
 if __name__ == "__main__":
     root = tk.Tk()
