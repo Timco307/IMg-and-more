@@ -8,56 +8,50 @@ class Program
     [STAThread]
     static void Main()
     {
-        string pythonCmd = "python";
-        string script = "file_finder_gui.py";
-        string pythonInstaller = "python-installer.exe"; // Place a Python installer in the same folder if desired
-        string pythonUrl = "https://www.python.org/downloads/";
+        string[] pythonCmds = { "python", "python3" };
+        string pythonInstaller = "python-installer.exe"; // Place a Python installer in the same folder
 
-        // Try to run "python --version"
-        try
+        bool pythonFound = false;
+        foreach (var pythonCmd in pythonCmds)
         {
-            ProcessStartInfo psi = new ProcessStartInfo
+            try
             {
-                FileName = pythonCmd,
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using (Process proc = Process.Start(psi))
-            {
-                proc.WaitForExit(2000);
-                if (proc.ExitCode == 0)
+                ProcessStartInfo psi = new ProcessStartInfo
                 {
-                    // Python found, run the script
-                    Process.Start(pythonCmd, script);
-                    return;
+                    FileName = pythonCmd,
+                    Arguments = "--version",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using (Process proc = Process.Start(psi))
+                {
+                    proc.WaitForExit(2000);
+                    if (proc.ExitCode == 0)
+                    {
+                        pythonFound = true;
+                        break;
+                    }
                 }
             }
+            catch { }
         }
-        catch { }
 
-        // Python not found
-        DialogResult result = MessageBox.Show(
-            "Python is not installed. Would you like to install it now?",
-            "Python Not Found",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-
-        if (result == DialogResult.Yes)
+        if (pythonFound)
         {
-            if (File.Exists(pythonInstaller))
-            {
-                Process.Start(pythonInstaller);
-            }
-            else
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = pythonUrl,
-                    UseShellExecute = true
-                });
-            }
+            MessageBox.Show("Python is already installed on this system.", "Python Found", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // Python not found, run installer
+        if (File.Exists(pythonInstaller))
+        {
+            MessageBox.Show("Python not found. The installer will now run.", "Installing Python", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            Process.Start(pythonInstaller);
+        }
+        else
+        {
+            MessageBox.Show("Python is not installed and the installer was not found in this folder.", "Installer Not Found", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

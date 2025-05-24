@@ -28,53 +28,128 @@ class FileFinderApp:
         self.files_found = []
         self.duplicates = []
         self.total_size = 0
-
+        self.dest_folder = tk.StringVar()
+        self.current_step = 0
+        self.steps = []
+        self.step_frames = []
         self.build_gui()
+        self.show_step(0)
 
     def build_gui(self):
-        frm = ttk.Frame(self.root, padding=10)
-        frm.pack(fill="both", expand=True)
+        self.root.rowconfigure(0, weight=1)
+        self.root.columnconfigure(0, weight=1)
+        self.main_frame = ttk.Frame(self.root, padding=10)
+        self.main_frame.grid(row=0, column=0, sticky="nsew")
+        self.main_frame.rowconfigure(0, weight=1)
+        self.main_frame.columnconfigure(0, weight=1)
 
-        # Folder selection
-        ttk.Label(frm, text="1. Choose a drive or folder:").grid(row=0, column=0, sticky="w")
-        ttk.Entry(frm, textvariable=self.selected_folder, width=40).grid(row=0, column=1)
-        ttk.Button(frm, text="Browse", command=self.browse_folder).grid(row=0, column=2)
+        # Step 0: Folder selection
+        step0 = ttk.Frame(self.main_frame)
+        ttk.Label(step0, text="1. Choose a drive or folder:").grid(row=0, column=0, sticky="w")
+        ttk.Entry(step0, textvariable=self.selected_folder, width=40).grid(row=0, column=1, sticky="ew")
+        ttk.Button(step0, text="Browse", command=self.browse_folder).grid(row=0, column=2)
+        step0.columnconfigure(1, weight=1)
+        self.steps.append(step0)
 
-        # File type selection
-        ttk.Label(frm, text="2. Choose file types:").grid(row=1, column=0, sticky="w")
+        # Step 1: File type selection
+        step1 = ttk.Frame(self.main_frame)
+        ttk.Label(step1, text="2. Choose file types:").grid(row=0, column=0, sticky="w")
         presets = list(PRESETS.keys()) + ["Custom"]
-        ttk.OptionMenu(frm, self.selected_preset, presets[0], *presets, command=self.preset_changed).grid(row=1, column=1, sticky="w")
-        self.custom_entry = ttk.Entry(frm, textvariable=self.custom_types, width=30, state="disabled")
-        self.custom_entry.grid(row=1, column=2, sticky="w")
+        ttk.OptionMenu(step1, self.selected_preset, presets[0], *presets, command=self.preset_changed).grid(row=0, column=1, sticky="w")
+        self.custom_entry = ttk.Entry(step1, textvariable=self.custom_types, width=30, state="disabled")
+        self.custom_entry.grid(row=0, column=2, sticky="w")
         self.custom_entry.insert(0, ".txt,.pdf")
+        step1.columnconfigure(1, weight=1)
+        self.steps.append(step1)
 
-        # Find button
-        ttk.Button(frm, text="3. Find Files!", command=self.find_files).grid(row=2, column=0, pady=10)
+        # Step 2: Find files and show results
+        step2 = ttk.Frame(self.main_frame)
+        ttk.Button(step2, text="Find Files!", command=self.find_files).grid(row=0, column=0, pady=10, sticky="w")
+        self.progress = ttk.Label(step2, text="")
+        self.progress.grid(row=1, column=0, columnspan=3, sticky="w")
+        self.result_list = tk.Listbox(step2, width=90, height=20)
+        self.result_list.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=5)
+        step2.rowconfigure(2, weight=1)
+        step2.columnconfigure(0, weight=1)
+        self.steps.append(step2)
 
-        # Progress and results
-        self.progress = ttk.Label(frm, text="")
-        self.progress.grid(row=3, column=0, columnspan=3, sticky="w")
-        self.result_list = tk.Listbox(frm, width=70, height=10)
-        self.result_list.grid(row=4, column=0, columnspan=3, pady=5)
+        # Step 3: Duplicate handling
+        step3 = ttk.Frame(self.main_frame)
+        self.dup_label = ttk.Label(step3, text="")
+        self.dup_label.grid(row=0, column=0, sticky="w")
+        self.dup_choice = ttk.Combobox(step3, state="readonly", width=80)
+        self.dup_choice.grid(row=0, column=1, sticky="ew")
+        self.dup_keep_btn = ttk.Button(step3, text="Keep This", command=self.keep_duplicate)
+        self.dup_keep_btn.grid(row=0, column=2, sticky="e")
+        step3.columnconfigure(1, weight=1)
+        self.steps.append(step3)
 
-        # Duplicate handling
-        self.dup_frame = ttk.Frame(frm)
-        self.dup_frame.grid(row=5, column=0, columnspan=3, sticky="w")
-        self.dup_label = ttk.Label(self.dup_frame, text="")
-        self.dup_label.pack(side="left")
-        self.dup_choice = ttk.Combobox(self.dup_frame, state="readonly")
-        self.dup_choice.pack(side="left")
-        self.dup_keep_btn = ttk.Button(self.dup_frame, text="Keep This", command=self.keep_duplicate)
-        self.dup_keep_btn.pack(side="left")
-        self.dup_frame.grid_remove()
+        # Step 4: Copy options
+        step4 = ttk.Frame(self.main_frame)
+        ttk.Label(step4, text="4. Copy found files to:").grid(row=0, column=0, sticky="w")
+        ttk.Entry(step4, textvariable=self.dest_folder, width=40).grid(row=0, column=1, sticky="ew")
+        ttk.Button(step4, text="Browse", command=self.browse_dest).grid(row=0, column=2)
+        ttk.Checkbutton(step4, text="Keep folder structure", variable=self.keep_structure).grid(row=1, column=0, columnspan=2, sticky="w")
+        ttk.Button(step4, text="Copy Files", command=self.copy_files).grid(row=1, column=2, pady=10, sticky="e")
+        step4.columnconfigure(1, weight=1)
+        self.steps.append(step4)
 
-        # Copy options
-        ttk.Label(frm, text="4. Copy found files to:").grid(row=6, column=0, sticky="w")
-        self.dest_folder = tk.StringVar()
-        ttk.Entry(frm, textvariable=self.dest_folder, width=40).grid(row=6, column=1)
-        ttk.Button(frm, text="Browse", command=self.browse_dest).grid(row=6, column=2)
-        ttk.Checkbutton(frm, text="Keep folder structure", variable=self.keep_structure).grid(row=7, column=0, columnspan=2, sticky="w")
-        ttk.Button(frm, text="Copy Files", command=self.copy_files).grid(row=7, column=2, pady=10)
+        # Navigation buttons
+        nav_frame = ttk.Frame(self.main_frame)
+        self.back_btn = ttk.Button(nav_frame, text="Back", command=self.prev_step)
+        self.next_btn = ttk.Button(nav_frame, text="Next", command=self.next_step)
+        self.back_btn.pack(side="left", padx=5)
+        self.next_btn.pack(side="right", padx=5)
+        nav_frame.grid(row=1, column=0, sticky="ew", pady=(10,0))
+        self.nav_frame = nav_frame
+
+        # Hide all steps initially
+        for step in self.steps:
+            step.grid(row=0, column=0, sticky="nsew")
+            step.grid_remove()
+
+    def show_step(self, idx):
+        # Hide all steps
+        for step in self.steps:
+            step.grid_remove()
+        self.current_step = idx
+        self.steps[idx].grid()
+        # Navigation button logic
+        self.back_btn["state"] = "normal" if idx > 0 else "disabled"
+        if idx == len(self.steps) - 1:
+            self.next_btn["state"] = "disabled"
+        else:
+            self.next_btn["state"] = "normal"
+        # Special logic for steps
+        if idx == 2:
+            self.progress.config(text="")
+            self.result_list.delete(0, tk.END)
+        if idx == 3:
+            self.update_duplicate_ui()
+        self.root.update_idletasks()
+
+    def next_step(self):
+        if self.current_step == 0:
+            folder = self.selected_folder.get()
+            if not folder or not os.path.isdir(folder):
+                messagebox.showerror("Error", "Please select a valid folder.")
+                return
+        if self.current_step == 1:
+            types = self.get_selected_types()
+            if not types:
+                messagebox.showerror("Error", "Please select at least one file type.")
+                return
+        if self.current_step == 2:
+            self.find_files()
+            if self.duplicates:
+                self.show_step(3)
+                return
+        if self.current_step < len(self.steps) - 1:
+            self.show_step(self.current_step + 1)
+
+    def prev_step(self):
+        if self.current_step > 0:
+            self.show_step(self.current_step - 1)
 
     def browse_folder(self):
         folder = filedialog.askdirectory()
@@ -100,14 +175,7 @@ class FileFinderApp:
 
     def find_files(self):
         folder = self.selected_folder.get()
-        if not folder or not os.path.isdir(folder):
-            messagebox.showerror("Error", "Please select a valid folder.")
-            return
         types = self.get_selected_types()
-        if not types:
-            messagebox.showerror("Error", "Please select at least one file type.")
-            return
-
         self.progress.config(text="Searching...")
         self.root.update()
         found = []
@@ -126,7 +194,6 @@ class FileFinderApp:
         self.check_duplicates()
 
     def check_duplicates(self):
-        # Duplicates: same name and modified date
         file_map = defaultdict(list)
         for f in self.files_found:
             name = os.path.basename(f)
@@ -137,29 +204,29 @@ class FileFinderApp:
             key = (name, mtime)
             file_map[key].append(f)
         self.duplicates = [v for v in file_map.values() if len(v) > 1]
-        if self.duplicates:
-            self.show_next_duplicate()
-        else:
-            self.dup_frame.grid_remove()
 
-    def show_next_duplicate(self):
+    def update_duplicate_ui(self):
         if not self.duplicates:
-            self.dup_frame.grid_remove()
-            return
-        dups = self.duplicates[0]
-        self.dup_label.config(text=f"Duplicate found: {os.path.basename(dups[0])}")
-        self.dup_choice['values'] = dups
-        self.dup_choice.current(0)
-        self.dup_frame.grid()
+            self.dup_label.config(text="No duplicates found.")
+            self.dup_choice["values"] = []
+            self.dup_choice.set("")
+            self.dup_keep_btn["state"] = "disabled"
+        else:
+            dups = self.duplicates[0]
+            self.dup_label.config(text=f"Duplicate found: {os.path.basename(dups[0])}")
+            self.dup_choice["values"] = dups
+            self.dup_choice.current(0)
+            self.dup_keep_btn["state"] = "normal"
 
     def keep_duplicate(self):
+        if not self.duplicates:
+            return
         keep = self.dup_choice.get()
-        # Remove all other dups from files_found
         for f in self.duplicates[0]:
             if f != keep and f in self.files_found:
                 self.files_found.remove(f)
         self.duplicates.pop(0)
-        self.show_next_duplicate()
+        self.update_duplicate_ui()
 
     def copy_files(self):
         dest = self.dest_folder.get()
@@ -181,4 +248,5 @@ class FileFinderApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = FileFinderApp(root)
+    root.minsize(800, 600)
     root.mainloop()
