@@ -21,7 +21,8 @@ class FileFinderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Super Easy File Finder")
-        self.selected_folder = tk.StringVar()
+        # Change to support multiple folders
+        self.selected_folders = []
         self.selected_preset = tk.StringVar(value="Images")
         self.custom_types = tk.StringVar()
         self.keep_structure = tk.BooleanVar(value=True)
@@ -49,12 +50,17 @@ class FileFinderApp:
 
         # Step 0: Folder selection
         step0 = ttk.Frame(self.main_frame)
-        ttk.Label(step0, text="1. Choose a drive or folder:").grid(row=0, column=0, sticky="w")
-        ttk.Entry(step0, textvariable=self.selected_folder, width=40).grid(row=0, column=1, sticky="ew")
-        ttk.Button(step0, text="Browse", command=self.browse_folder).grid(row=0, column=2)
+        ttk.Label(step0, text="1. Choose drives or folders:").grid(row=0, column=0, sticky="w")
+        # Listbox for multiple folders
+        self.folder_listbox = tk.Listbox(step0, height=3, width=40, selectmode="browse")
+        self.folder_listbox.grid(row=0, column=1, sticky="ew")
+        # "+" button to add folder
+        ttk.Button(step0, text="+", width=2, command=self.browse_folder).grid(row=0, column=2)
+        # "-" button to remove selected folder
+        ttk.Button(step0, text="-", width=2, command=self.remove_selected_folder).grid(row=0, column=3)
         # Add quick access to Desktop/Documents/Drives
         quick_frame = ttk.Frame(step0)
-        quick_frame.grid(row=1, column=0, columnspan=3, sticky="w", pady=(5,0))
+        quick_frame.grid(row=1, column=0, columnspan=4, sticky="w", pady=(5,0))
         ttk.Button(quick_frame, text="Desktop", command=lambda: self.set_quick_folder("Desktop")).pack(side="left", padx=2)
         ttk.Button(quick_frame, text="Documents", command=lambda: self.set_quick_folder("Documents")).pack(side="left", padx=2)
         ttk.Button(quick_frame, text="C:\\", command=lambda: self.set_quick_folder("C:\\")).pack(side="left", padx=2)
@@ -126,7 +132,9 @@ class FileFinderApp:
         ttk.Label(step4, text="If file exists:").grid(row=2, column=0, sticky="w")
         ttk.Radiobutton(step4, text="Skip", variable=self.overwrite_mode, value="skip").grid(row=2, column=1, sticky="w")
         ttk.Radiobutton(step4, text="Overwrite", variable=self.overwrite_mode, value="overwrite").grid(row=2, column=2, sticky="w")
-        ttk.Button(step4, text="Copy Files", command=self.copy_files).grid(row=3, column=2, pady=10, sticky="e")
+        # Add auto-rename option
+        ttk.Radiobutton(step4, text="Auto-rename (add (1), (2), ...)", variable=self.overwrite_mode, value="autorename").grid(row=2, column=3, sticky="w")
+        ttk.Button(step4, text="Copy Files", command=self.copy_files).grid(row=3, column=3, pady=10, sticky="e")
         step4.columnconfigure(1, weight=1)
         self.steps.append(step4)
 
@@ -169,9 +177,71 @@ class FileFinderApp:
         else:
             path = which
         if os.path.isdir(path):
-            self.selected_folder.set(path)
+            if path not in self.selected_folders:
+                self.selected_folders.append(path)
+                self.update_folder_listbox()
         else:
             messagebox.showerror("Error", f"Folder not found: {path}")
+
+    def browse_folder(self):
+        folder = filedialog.askdirectory()
+        if folder and folder not in self.selected_folders:
+            self.selected_folders.append(folder)
+            self.update_folder_listbox()
+
+    def remove_selected_folder(self):
+        sel = self.folder_listbox.curselection()
+        if sel:
+            idx = sel[0]
+            del self.selected_folders[idx]
+            self.update_folder_listbox()
+
+    def update_folder_listbox(self):
+        self.folder_listbox.delete(0, tk.END)
+        for f in self.selected_folders:
+            self.folder_listbox.insert(tk.END, f)
+
+    def show_step(self, idx):
+        # Hide all steps
+        for step in self.steps:
+            step.grid_remove()
+        self.current_step = idx
+        self.steps[idx].grid()
+        # Navigation button logic
+        self.back_btn["state"] = "normal" if idx > 0 else "disabled"
+        if idx == len(self.steps) - 1:
+            self.next_btn["state"] = "disabled"
+        else:
+            self.next_btn["state"] = "normal"
+        # Special logic for steps
+        if idx == 2:
+            self.progress.config(text="")
+            self.result_list.delete(0, tk.END)
+        if idx == 3:
+            self.update_duplicate_ui()
+        self.root.update_idletasks()
+
+    def next_step(self):
+        if self.current_step == 0:
+            if not self.selected_folders or not all(os.path.isdir(f) for f in self.selected_folders):
+                messagebox.showerror("Error", "Please select at least one valid folder.")
+                return
+        if self.current_step == 1:
+            types = self.get_selected_types()
+            if not types:
+                messagebox.showerror("Error", "Please select at least one file type.")
+                return
+        if self.current_step == 2:
+            self.find_files()
+            if self.duplicates:
+                self.show_step(3)
+                return
+        if self.current_step < len(self.steps) - 1:
+            self.show_step(self.current_step + 1)
+
+    def prev_step(self):
+        if self.current_step > 0:
+            self.show_step(self.current_step - 1)
 
     def export_file_list(self):
         if not self.files_found:
@@ -216,9 +286,8 @@ class FileFinderApp:
 
     def next_step(self):
         if self.current_step == 0:
-            folder = self.selected_folder.get()
-            if not folder or not os.path.isdir(folder):
-                messagebox.showerror("Error", "Please select a valid folder.")
+            if not self.selected_folders or not all(os.path.isdir(f) for f in self.selected_folders):
+                messagebox.showerror("Error", "Please select at least one valid folder.")
                 return
         if self.current_step == 1:
             types = self.get_selected_types()
@@ -260,17 +329,17 @@ class FileFinderApp:
         return PRESETS.get(preset, [])
 
     def find_files(self):
-        folder = self.selected_folder.get()
         types = self.get_selected_types()
         self.progress.config(text="Searching...")
         self.root.update()
         found = []
-        for rootdir, _, files in os.walk(folder):
-            for f in files:
-                ext = os.path.splitext(f)[1].lower()
-                if ext in types:
-                    full_path = os.path.join(rootdir, f)
-                    found.append(full_path)
+        for folder in self.selected_folders:
+            for rootdir, _, files in os.walk(folder):
+                for f in files:
+                    ext = os.path.splitext(f)[1].lower()
+                    if ext in types:
+                        full_path = os.path.join(rootdir, f)
+                        found.append(full_path)
         self.files_found = found
         self.total_size = sum(get_file_size(f) for f in found)
         self.result_list.delete(0, tk.END)
@@ -322,7 +391,6 @@ class FileFinderApp:
             messagebox.showerror("Error", "Please select a valid destination folder.")
             return
         keep_struct = self.keep_structure.get()
-        base_folder = self.selected_folder.get()
         overwrite = self.overwrite_mode.get()
         # Only copy selected files if user made a selection, else all
         selected = self.result_list.curselection()
@@ -332,7 +400,15 @@ class FileFinderApp:
             return
         errors = []
         copied = 0
+        # Find base folder for each file (for structure)
+        base_folders = sorted(self.selected_folders, key=lambda x: -len(x))
+        def get_base_folder(f):
+            for b in base_folders:
+                if f.startswith(b):
+                    return b
+            return base_folders[0] if base_folders else ""
         for f in files_to_copy:
+            base_folder = get_base_folder(f)
             rel_path = os.path.relpath(f, base_folder) if keep_struct else os.path.basename(f)
             dest_path = os.path.join(dest, rel_path)
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
@@ -340,6 +416,13 @@ class FileFinderApp:
                 if overwrite == "skip":
                     continue
                 elif overwrite == "overwrite":
+                    try:
+                        shutil.copy2(f, dest_path)
+                        copied += 1
+                    except Exception as e:
+                        errors.append(f"{f}: {e}")
+                elif overwrite == "autorename":
+                    dest_path = self.get_autorename_path(dest_path)
                     try:
                         shutil.copy2(f, dest_path)
                         copied += 1
@@ -363,6 +446,15 @@ class FileFinderApp:
                 with open(errfile, "w", encoding="utf-8") as f:
                     for line in errors:
                         f.write(line + "\n")
+
+    def get_autorename_path(self, path):
+        base, ext = os.path.splitext(path)
+        i = 1
+        new_path = f"{base} ({i}){ext}"
+        while os.path.exists(new_path):
+            i += 1
+            new_path = f"{base} ({i}){ext}"
+        return new_path
 
 if __name__ == "__main__":
     root = tk.Tk()
