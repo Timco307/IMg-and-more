@@ -187,10 +187,11 @@ class FileFinderApp:
             radio.config(value=i)
 
     def browse_folder_row(self, idx):
-        folders = filedialog.askdirectory()
-        if folders:
-            self.folder_entries[idx][0].set(folders)
-            self.selected_folders[idx] = folders
+        folder = filedialog.askdirectory()
+        if folder:
+            self.folder_entries[idx][0].set(folder)
+            self.selected_folders[idx] = folder
+            print(f"[DEBUG] Browsed folder for row {idx}: {folder}")
             self.update_folder_rows()
 
     def show_help(self):
