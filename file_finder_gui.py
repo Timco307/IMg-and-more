@@ -41,6 +41,9 @@ class FileFinderApp:
         self.current_step = 0
         self.steps = []
         self.step_frames = []
+        self.is_running = False
+        self.is_paused = False
+        self.stop_flag = False
         self.build_gui()
         self.show_step(0)
 
@@ -144,8 +147,20 @@ class FileFinderApp:
         # Add auto-rename option
         ttk.Radiobutton(step4, text="Auto-rename (add (1), (2), ...)", variable=self.overwrite_mode, value="autorename").grid(row=2, column=3, sticky="w")
         # Add copy and move buttons
-        ttk.Button(step4, text="Copy Files", command=lambda: self.copy_files(move=False)).grid(row=3, column=2, pady=10, sticky="e")
-        ttk.Button(step4, text="Move Files", command=lambda: self.copy_files(move=True)).grid(row=3, column=3, pady=10, sticky="e")
+        self.copy_btn = ttk.Button(step4, text="Copy Files", command=lambda: self.start_copy_move(move=False))
+        self.move_btn = ttk.Button(step4, text="Move Files", command=lambda: self.start_copy_move(move=True))
+        self.copy_btn.grid(row=3, column=2, pady=10, sticky="e")
+        self.move_btn.grid(row=3, column=3, pady=10, sticky="e")
+        # Add pause/resume and stop buttons
+        self.pause_resume_btn = ttk.Button(step4, text="Pause", command=self.pause_resume)
+        self.stop_btn = ttk.Button(step4, text="Stop", command=self.stop_operation, state="disabled")
+        self.pause_resume_btn.grid(row=3, column=0, pady=10, sticky="w")
+        self.stop_btn.grid(row=3, column=1, pady=10, sticky="w")
+        # Progress bar
+        self.progress_bar = ttk.Progressbar(step4, orient="horizontal", length=300, mode="determinate")
+        self.progress_bar.grid(row=4, column=0, columnspan=4, pady=10, sticky="ew")
+        self.progress_label = ttk.Label(step4, text="")
+        self.progress_label.grid(row=5, column=0, columnspan=4, sticky="w")
         step4.columnconfigure(1, weight=1)
         self.steps.append(step4)
 
@@ -450,11 +465,37 @@ class FileFinderApp:
         self.duplicates.pop(0)
         self.update_duplicate_ui()
 
+    def start_copy_move(self, move=False):
+        if self.is_running:
+            messagebox.showerror("Error", "An operation is already running.")
+            return
+        self.is_running = True
+        self.is_paused = False
+        self.stop_flag = False
+        self.pause_resume_btn["text"] = "Pause"
+        self.stop_btn["state"] = "normal"
+        self.root.after(0, lambda: self.copy_files(move))
+
+    def pause_resume(self):
+        if not self.is_running:
+            return
+        self.is_paused = not self.is_paused
+        if self.is_paused:
+            self.pause_resume_btn["text"] = "Resume"
+        else:
+            self.pause_resume_btn["text"] = "Pause"
+
+    def stop_operation(self):
+        self.stop_flag = True
+        self.stop_btn["state"] = "disabled"
+
     def copy_files(self, move=False):
         dest = self.dest_folder.get()
         if not dest or not os.path.isdir(dest):
             messagebox.showerror("Error", "Please select a valid destination folder.")
+            self.reset_ui()
             return
+
         keep_struct = self.keep_structure.get()
         overwrite = self.overwrite_mode.get()
         # Only copy selected files if user made a selection, else all
@@ -462,9 +503,16 @@ class FileFinderApp:
         files_to_copy = [self.result_list.get(i).split("  [")[0] for i in selected] if selected else self.files_found
         if not files_to_copy:
             messagebox.showerror("Error", "No files selected to copy.")
+            self.reset_ui()
             return
+
         errors = []
         copied = 0
+        total_files = len(files_to_copy)
+        self.progress_bar["maximum"] = total_files
+        self.copy_btn["state"] = "disabled"
+        self.move_btn["state"] = "disabled"
+
         # Find base folder for each file (for structure)
         base_folders = sorted(self.selected_folders, key=lambda x: -len(x))
         def get_base_folder(f):
@@ -472,52 +520,60 @@ class FileFinderApp:
                 if f.startswith(b):
                     return b
             return base_folders[0] if base_folders else ""
+
         print(f"[DEBUG] Copying {len(files_to_copy)} files to {dest} (overwrite mode: {overwrite}, move: {move})")
-        for f in files_to_copy:
+        for i, f in enumerate(files_to_copy):
+            if self.stop_flag:
+                print("[DEBUG] Operation stopped by user.")
+                break
+
+            while self.is_paused:
+                self.root.update()
+                self.root.after(100)  # Check every 100ms
+
             base_folder = get_base_folder(f)
             rel_path = os.path.relpath(f, base_folder) if keep_struct else os.path.basename(f)
             dest_path = os.path.join(dest, rel_path)
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            if os.path.exists(dest_path):
-                if overwrite == "skip":
-                    print(f"[DEBUG] Skipping (exists): {dest_path}")
-                    continue
-                elif overwrite == "overwrite":
-                    try:
+
+            try:
+                if os.path.exists(dest_path):
+                    if overwrite == "skip":
+                        print(f"[DEBUG] Skipping (exists): {dest_path}")
+                        continue
+                    elif overwrite == "overwrite":
                         if move:
                             shutil.move(f, dest_path)
                         else:
                             shutil.copy2(f, dest_path)
                         copied += 1
                         print(f"[DEBUG] Overwrote: {dest_path}")
-                    except Exception as e:
-                        errors.append(f"{f}: {e}")
-                        print(f"[DEBUG] Error overwriting {dest_path}: {e}")
-                elif overwrite == "autorename":
-                    dest_path = self.get_autorename_path(dest_path)
-                    try:
+                    elif overwrite == "autorename":
+                        dest_path = self.get_autorename_path(dest_path)
                         if move:
                             shutil.move(f, dest_path)
                         else:
                             shutil.copy2(f, dest_path)
                         copied += 1
                         print(f"[DEBUG] Auto-renamed and copied: {dest_path}")
-                    except Exception as e:
-                        errors.append(f"{f}: {e}")
-                        print(f"[DEBUG] Error autorenaming {dest_path}: {e}")
+                    else:
+                        continue
                 else:
-                    continue
-            else:
-                try:
                     if move:
                         shutil.move(f, dest_path)
                     else:
                         shutil.copy2(f, dest_path)
                     copied += 1
                     print(f"[DEBUG] Copied: {dest_path}")
-                except Exception as e:
-                    errors.append(f"{f}: {e}")
-                    print(f"[DEBUG] Error copying {dest_path}: {e}")
+            except Exception as e:
+                errors.append(f"{f}: {e}")
+                print(f"[DEBUG] Error copying {dest_path}: {e}")
+
+            self.progress_bar["value"] = i + 1
+            self.progress_label.config(text=f"Processed: {i+1}/{total_files}")
+            self.root.update_idletasks()
+
+        self.reset_ui()
         msg = f"Copied {copied} files."
         if errors:
             msg += f"\n{len(errors)} errors occurred."
@@ -539,6 +595,15 @@ class FileFinderApp:
             i += 1
             new_path = f"{base} ({i}){ext}"
         return new_path
+
+    def reset_ui(self):
+        self.is_running = False
+        self.is_paused = False
+        self.stop_flag = False
+        self.copy_btn["state"] = "normal"
+        self.move_btn["state"] = "normal"
+        self.pause_resume_btn["text"] = "Pause"
+        self.stop_btn["state"] = "disabled"
 
 if __name__ == "__main__":
     root = tk.Tk()
