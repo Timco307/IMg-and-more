@@ -21,8 +21,9 @@ class FileFinderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Super Easy File Finder")
-        # Change to support multiple folders
         self.selected_folders = []
+        self.folder_entries = []
+        self.selected_folder_idx = tk.IntVar(value=0)
         self.selected_preset = tk.StringVar(value="Images")
         self.custom_types = tk.StringVar()
         self.keep_structure = tk.BooleanVar(value=True)
@@ -51,21 +52,23 @@ class FileFinderApp:
         # Step 0: Folder selection
         step0 = ttk.Frame(self.main_frame)
         ttk.Label(step0, text="1. Choose drives or folders:").grid(row=0, column=0, sticky="w")
-        # Listbox for multiple folders
-        self.folder_listbox = tk.Listbox(step0, height=3, width=40, selectmode="browse")
-        self.folder_listbox.grid(row=0, column=1, sticky="ew")
-        # "+" button to add folder
-        ttk.Button(step0, text="+", width=2, command=self.browse_folder).grid(row=0, column=2)
-        # "-" button to remove selected folder
-        ttk.Button(step0, text="-", width=2, command=self.remove_selected_folder).grid(row=0, column=3)
+        # Frame for dynamic folder rows
+        self.folder_rows_frame = ttk.Frame(step0)
+        self.folder_rows_frame.grid(row=1, column=0, columnspan=5, sticky="ew")
+        self.add_folder_row()  # Start with one row
+
+        # "+" button to add folder row
+        ttk.Button(step0, text="+", width=2, command=self.add_folder_row).grid(row=2, column=1, sticky="w")
+        # "-" button to remove selected folder row
+        ttk.Button(step0, text="-", width=2, command=self.remove_selected_folder_row).grid(row=2, column=2, sticky="w")
         # Add quick access to Desktop/Documents/Drives
         quick_frame = ttk.Frame(step0)
-        quick_frame.grid(row=1, column=0, columnspan=4, sticky="w", pady=(5,0))
+        quick_frame.grid(row=3, column=0, columnspan=5, sticky="w", pady=(5,0))
         ttk.Button(quick_frame, text="Desktop", command=lambda: self.set_quick_folder("Desktop")).pack(side="left", padx=2)
         ttk.Button(quick_frame, text="Documents", command=lambda: self.set_quick_folder("Documents")).pack(side="left", padx=2)
         ttk.Button(quick_frame, text="C:\\", command=lambda: self.set_quick_folder("C:\\")).pack(side="left", padx=2)
         ttk.Button(quick_frame, text="D:\\", command=lambda: self.set_quick_folder("D:\\")).pack(side="left", padx=2)
-        step0.columnconfigure(1, weight=1)
+        step0.columnconfigure(0, weight=1)
         self.steps.append(step0)
 
         # Step 1: File type selection
@@ -152,6 +155,58 @@ class FileFinderApp:
             step.grid(row=0, column=0, sticky="nsew")
             step.grid_remove()
 
+    def add_folder_row(self, path=""):
+        idx = len(self.folder_entries)
+        var = tk.StringVar(value=path)
+        entry = ttk.Entry(self.folder_rows_frame, textvariable=var, width=40)
+        entry.grid(row=idx, column=0, sticky="ew", pady=2)
+        entry.bind("<Button-1>", lambda e, i=idx: self.browse_folder_row(i))
+        # Browse button
+        browse_btn = ttk.Button(self.folder_rows_frame, text="Browse", command=lambda i=idx: self.browse_folder_row(i))
+        browse_btn.grid(row=idx, column=1, padx=2)
+        # Radio button to select for removal
+        radio = ttk.Radiobutton(self.folder_rows_frame, variable=self.selected_folder_idx, value=idx)
+        radio.grid(row=idx, column=2, padx=2)
+        self.folder_entries.append((var, entry, browse_btn, radio))
+        self.selected_folders.append(path)
+        self.update_folder_rows()
+
+    def remove_selected_folder_row(self):
+        idx = self.selected_folder_idx.get()
+        if 0 <= idx < len(self.folder_entries):
+            # Remove widgets
+            for widget in self.folder_entries[idx][1:]:
+                widget.destroy()
+            del self.folder_entries[idx]
+            del self.selected_folders[idx]
+            # Fix indices for remaining rows
+            self.selected_folder_idx.set(0)
+            self.update_folder_rows()
+
+    def update_folder_rows(self):
+        # Update grid positions and values
+        for i, (var, entry, browse_btn, radio) in enumerate(self.folder_entries):
+            entry.grid(row=i, column=0, sticky="ew", pady=2)
+            browse_btn.grid(row=i, column=1, padx=2)
+            radio.grid(row=i, column=2, padx=2)
+            # Keep selected_folders in sync
+            self.selected_folders[i] = var.get()
+            # Update radio value
+            radio.config(value=i)
+        # Remove empty trailing rows except one
+        while len(self.folder_entries) > 1 and all(not v[0].get() for v in self.folder_entries[-1:]):
+            for widget in self.folder_entries[-1][1:]:
+                widget.destroy()
+            del self.folder_entries[-1]
+            del self.selected_folders[-1]
+
+    def browse_folder_row(self, idx):
+        folder = filedialog.askdirectory()
+        if folder:
+            self.folder_entries[idx][0].set(folder)
+            self.selected_folders[idx] = folder
+            self.update_folder_rows()
+
     def show_help(self):
         messagebox.showinfo(
             "Help / Info",
@@ -176,52 +231,18 @@ class FileFinderApp:
             path = str(pathlib.Path.home() / "Documents")
         else:
             path = which
-        if os.path.isdir(path):
-            if path not in self.selected_folders:
-                self.selected_folders.append(path)
-                self.update_folder_listbox()
-        else:
-            messagebox.showerror("Error", f"Folder not found: {path}")
-
-    def browse_folder(self):
-        folder = filedialog.askdirectory()
-        if folder and folder not in self.selected_folders:
-            self.selected_folders.append(folder)
-            self.update_folder_listbox()
-
-    def remove_selected_folder(self):
-        sel = self.folder_listbox.curselection()
-        if sel:
-            idx = sel[0]
-            del self.selected_folders[idx]
-            self.update_folder_listbox()
-
-    def update_folder_listbox(self):
-        self.folder_listbox.delete(0, tk.END)
-        for f in self.selected_folders:
-            self.folder_listbox.insert(tk.END, f)
-
-    def show_step(self, idx):
-        # Hide all steps
-        for step in self.steps:
-            step.grid_remove()
-        self.current_step = idx
-        self.steps[idx].grid()
-        # Navigation button logic
-        self.back_btn["state"] = "normal" if idx > 0 else "disabled"
-        if idx == len(self.steps) - 1:
-            self.next_btn["state"] = "disabled"
-        else:
-            self.next_btn["state"] = "normal"
-        # Special logic for steps
-        if idx == 2:
-            self.progress.config(text="")
-            self.result_list.delete(0, tk.END)
-        if idx == 3:
-            self.update_duplicate_ui()
-        self.root.update_idletasks()
+        # Set to first empty row or add new row
+        for i, (var, *_rest) in enumerate(self.folder_entries):
+            if not var.get():
+                var.set(path)
+                self.selected_folders[i] = path
+                self.update_folder_rows()
+                return
+        self.add_folder_row(path)
 
     def next_step(self):
+        # Only keep non-empty folders
+        self.selected_folders = [v[0].get() for v in self.folder_entries if v[0].get()]
         if self.current_step == 0:
             if not self.selected_folders or not all(os.path.isdir(f) for f in self.selected_folders):
                 messagebox.showerror("Error", "Please select at least one valid folder.")
@@ -285,6 +306,8 @@ class FileFinderApp:
         self.root.update_idletasks()
 
     def next_step(self):
+        # Only keep non-empty folders
+        self.selected_folders = [v[0].get() for v in self.folder_entries if v[0].get()]
         if self.current_step == 0:
             if not self.selected_folders or not all(os.path.isdir(f) for f in self.selected_folders):
                 messagebox.showerror("Error", "Please select at least one valid folder.")
