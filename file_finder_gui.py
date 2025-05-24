@@ -55,10 +55,11 @@ class FileFinderApp:
         # Frame for dynamic folder rows
         self.folder_rows_frame = ttk.Frame(step0)
         self.folder_rows_frame.grid(row=1, column=0, columnspan=5, sticky="ew")
-        self.add_folder_row()  # Start with one row
-
+        # Always start with one row
+        if not self.folder_entries:
+            self.add_folder_row()
         # "+" button to add folder row
-        ttk.Button(step0, text="+", width=2, command=self.add_folder_row).grid(row=2, column=1, sticky="w")
+        ttk.Button(step0, text="+", width=2, command=lambda: self.add_folder_row("")).grid(row=2, column=1, sticky="w")
         # "-" button to remove selected folder row
         ttk.Button(step0, text="-", width=2, command=self.remove_selected_folder_row).grid(row=2, column=2, sticky="w")
         # Add quick access to Desktop/Documents/Drives
@@ -161,19 +162,19 @@ class FileFinderApp:
         entry = ttk.Entry(self.folder_rows_frame, textvariable=var, width=40)
         entry.grid(row=idx, column=0, sticky="ew", pady=2)
         entry.bind("<Button-1>", lambda e, i=idx: self.browse_folder_row(i))
-        # Browse button
         browse_btn = ttk.Button(self.folder_rows_frame, text="Browse", command=lambda i=idx: self.browse_folder_row(i))
         browse_btn.grid(row=idx, column=1, padx=2)
-        # Radio button to select for removal
         radio = ttk.Radiobutton(self.folder_rows_frame, variable=self.selected_folder_idx, value=idx)
         radio.grid(row=idx, column=2, padx=2)
         self.folder_entries.append((var, entry, browse_btn, radio))
         self.selected_folders.append(path)
+        print(f"[DEBUG] Added folder row at index {idx} (path='{path}')")
         self.update_folder_rows()
 
     def remove_selected_folder_row(self):
         idx = self.selected_folder_idx.get()
         if 0 <= idx < len(self.folder_entries):
+            print(f"[DEBUG] Removing folder row at index {idx} (path='{self.selected_folders[idx]}')")
             # Remove widgets
             for widget in self.folder_entries[idx][1:]:
                 widget.destroy()
@@ -195,6 +196,7 @@ class FileFinderApp:
             radio.config(value=i)
         # Remove empty trailing rows except one
         while len(self.folder_entries) > 1 and all(not v[0].get() for v in self.folder_entries[-1:]):
+            print(f"[DEBUG] Removing trailing empty folder row at index {len(self.folder_entries)-1}")
             for widget in self.folder_entries[-1][1:]:
                 widget.destroy()
             del self.folder_entries[-1]
@@ -203,6 +205,7 @@ class FileFinderApp:
     def browse_folder_row(self, idx):
         folder = filedialog.askdirectory()
         if folder:
+            print(f"[DEBUG] Browsed folder for row {idx}: {folder}")
             self.folder_entries[idx][0].set(folder)
             self.selected_folders[idx] = folder
             self.update_folder_rows()
@@ -356,6 +359,7 @@ class FileFinderApp:
         self.progress.config(text="Searching...")
         self.root.update()
         found = []
+        print(f"[DEBUG] Searching in folders: {self.selected_folders} for types: {types}")
         for folder in self.selected_folders:
             for rootdir, _, files in os.walk(folder):
                 for f in files:
@@ -363,6 +367,7 @@ class FileFinderApp:
                     if ext in types:
                         full_path = os.path.join(rootdir, f)
                         found.append(full_path)
+        print(f"[DEBUG] Found {len(found)} files")
         self.files_found = found
         self.total_size = sum(get_file_size(f) for f in found)
         self.result_list.delete(0, tk.END)
@@ -430,6 +435,7 @@ class FileFinderApp:
                 if f.startswith(b):
                     return b
             return base_folders[0] if base_folders else ""
+        print(f"[DEBUG] Copying {len(files_to_copy)} files to {dest} (overwrite mode: {overwrite})")
         for f in files_to_copy:
             base_folder = get_base_folder(f)
             rel_path = os.path.relpath(f, base_folder) if keep_struct else os.path.basename(f)
@@ -437,28 +443,35 @@ class FileFinderApp:
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
             if os.path.exists(dest_path):
                 if overwrite == "skip":
+                    print(f"[DEBUG] Skipping (exists): {dest_path}")
                     continue
                 elif overwrite == "overwrite":
                     try:
                         shutil.copy2(f, dest_path)
                         copied += 1
+                        print(f"[DEBUG] Overwrote: {dest_path}")
                     except Exception as e:
                         errors.append(f"{f}: {e}")
+                        print(f"[DEBUG] Error overwriting {dest_path}: {e}")
                 elif overwrite == "autorename":
                     dest_path = self.get_autorename_path(dest_path)
                     try:
                         shutil.copy2(f, dest_path)
                         copied += 1
+                        print(f"[DEBUG] Auto-renamed and copied: {dest_path}")
                     except Exception as e:
                         errors.append(f"{f}: {e}")
+                        print(f"[DEBUG] Error autorenaming {dest_path}: {e}")
                 else:
                     continue
             else:
                 try:
                     shutil.copy2(f, dest_path)
                     copied += 1
+                    print(f"[DEBUG] Copied: {dest_path}")
                 except Exception as e:
                     errors.append(f"{f}: {e}")
+                    print(f"[DEBUG] Error copying {dest_path}: {e}")
         msg = f"Copied {copied} files."
         if errors:
             msg += f"\n{len(errors)} errors occurred."
@@ -482,5 +495,10 @@ class FileFinderApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = FileFinderApp(root)
+    # Open maximized/fullscreen
+    try:
+        root.state('zoomed')  # Windows
+    except Exception:
+        root.attributes('-zoomed', True)  # Linux
     root.minsize(800, 600)
     root.mainloop()
