@@ -4,8 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from collections import defaultdict
 from datetime import datetime
-import concurrent.futures  # Import for threading
-import traceback # Import traceback
+import traceback
 
 PRESETS = {
     "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"],
@@ -46,12 +45,9 @@ class FileFinderApp:
         self.is_running = False
         self.is_paused = False
         self.stop_flag = False
-        self.use_threading = use_threading
-        if use_threading:
-            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)  # Thread pool
-        else:
-            self.executor = None
-            print("Fast transfer (threading) disabled.")
+        # Remove threading, always run in main thread
+        self.executor = None
+        self.use_threading = False
         self.build_gui()
         self.show_step(0)
 
@@ -135,9 +131,12 @@ class FileFinderApp:
         self.dup_choice.grid(row=0, column=1, sticky="ew")
         self.dup_keep_btn = ttk.Button(step3, text="Keep This", command=self.keep_duplicate)
         self.dup_keep_btn.grid(row=0, column=2, sticky="e")
+        # Add keep all button
+        self.dup_keep_all_btn = ttk.Button(step3, text="Keep All", command=self.keep_all_duplicates)
+        self.dup_keep_all_btn.grid(row=1, column=1, sticky="w", pady=(5,0))
         # Add skip all duplicates button
         self.dup_skip_btn = ttk.Button(step3, text="Skip All Duplicates", command=self.skip_all_duplicates)
-        self.dup_skip_btn.grid(row=1, column=0, columnspan=3, sticky="w", pady=(5,0))
+        self.dup_skip_btn.grid(row=1, column=0, sticky="w", pady=(5,0))
         step3.columnconfigure(1, weight=1)
         self.steps.append(step3)
 
@@ -473,6 +472,16 @@ class FileFinderApp:
         self.duplicates.pop(0)
         self.update_duplicate_ui()
 
+    def keep_all_duplicates(self):
+        # Keep the first file in each duplicate group, remove others from self.files_found
+        for group in self.duplicates:
+            keep = group[0]
+            for f in group[1:]:
+                if f in self.files_found:
+                    self.files_found.remove(f)
+        self.duplicates = []
+        self.update_duplicate_ui()
+
     def start_copy_move(self, move=False):
         if self.is_running:
             messagebox.showerror("Error", "An operation is already running.")
@@ -490,7 +499,6 @@ class FileFinderApp:
 
         keep_struct = self.keep_structure.get()
         overwrite = self.overwrite_mode.get()
-        # Only copy selected files if user made a selection, else all
         selected = self.result_list.curselection()
         files_to_copy = [self.result_list.get(i).split("  [")[0] for i in selected] if selected else self.files_found
         if not files_to_copy:
@@ -503,11 +511,8 @@ class FileFinderApp:
         self.copy_btn["state"] = "disabled"
         self.move_btn["state"] = "disabled"
 
-        # Submit the copy/move operation to the thread pool
-        if self.use_threading:
-            self.executor.submit(self.copy_move_task, files_to_copy, dest, keep_struct, overwrite, move)
-        else:
-            self.copy_move_task(files_to_copy, dest, keep_struct, overwrite, move)
+        # No threading: just call directly
+        self.copy_move_task(files_to_copy, dest, keep_struct, overwrite, move)
 
     def copy_move_task(self, files_to_copy, dest, keep_struct, overwrite, move):
         errors = []
@@ -625,22 +630,8 @@ class FileFinderApp:
         self.stop_btn["state"] = "disabled"
 
 if __name__ == "__main__":
-    use_threading = True
-    root = None
-    try:
-        root = tk.Tk()
-    except tk.TclError as e:
-        if "no display name and no $DISPLAY" in str(e):
-            messagebox.showerror("Error", "No display found. Running in non-threaded mode.")
-            use_threading = False
-        else:
-            raise e
-
-    if root is None:
-        root = tk.Tk() # Create a Tk instance even if threading is disabled
-
-    app = FileFinderApp(root, use_threading=use_threading)
-
+    root = tk.Tk()
+    app = FileFinderApp(root, use_threading=False)
     # Open maximized/fullscreen
     try:
         root.state('zoomed')  # Windows
