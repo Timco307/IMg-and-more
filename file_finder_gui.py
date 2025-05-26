@@ -3,9 +3,11 @@ import subprocess
 import os
 
 def main():
-    gui_file = os.path.join(os.path.dirname(__file__), "file_finder_gui_main.py")
-    if not os.path.exists(gui_file):
-        print("Error: file_finder_gui_main.py not found.")
+    # Always use the absolute path of the current script's directory
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    gui_file = os.path.join(script_dir, "file_finder_gui_main.py")
+    if not os.path.isfile(gui_file):
+        print(f"Error: file_finder_gui_main.py not found in {script_dir}.")
         input("Press Enter to exit...")
         sys.exit(1)
     try:
