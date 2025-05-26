@@ -52,6 +52,15 @@ class FileFinderApp:
         self.build_gui()
         self.show_step(0)
 
+    def pause_resume(self):
+        # Dummy pause/resume for compatibility (no threading)
+        messagebox.showinfo("Pause/Resume", "Pause/Resume is not available in this version.")
+
+    def stop_operation(self):
+        # Dummy stop for compatibility (no threading)
+        self.stop_flag = True
+        messagebox.showinfo("Stop", "Stop is not available in this version.")
+
     def build_gui(self):
         self.root.rowconfigure(0, weight=1)
         self.root.columnconfigure(0, weight=1)
