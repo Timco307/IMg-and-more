@@ -625,17 +625,21 @@ class FileFinderApp:
         self.stop_btn["state"] = "disabled"
 
 if __name__ == "__main__":
-    root = tk.Tk()
     use_threading = True
+    root = None
     try:
-        app = FileFinderApp(root, use_threading=use_threading)
+        root = tk.Tk()
     except tk.TclError as e:
         if "no display name and no $DISPLAY" in str(e):
             messagebox.showerror("Error", "No display found. Running in non-threaded mode.")
             use_threading = False
-            app = FileFinderApp(root, use_threading=use_threading)
         else:
             raise e
+
+    if root is None:
+        root = tk.Tk() # Create a Tk instance even if threading is disabled
+
+    app = FileFinderApp(root, use_threading=use_threading)
 
     # Open maximized/fullscreen
     try:
