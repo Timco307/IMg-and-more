@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from collections import defaultdict
 from datetime import datetime
+import concurrent.futures  # Import for threading
 
 PRESETS = {
     "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"],
@@ -44,6 +45,7 @@ class FileFinderApp:
         self.is_running = False
         self.is_paused = False
         self.stop_flag = False
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)  # Thread pool
         self.build_gui()
         self.show_step(0)
 
@@ -474,22 +476,6 @@ class FileFinderApp:
         self.stop_flag = False
         self.pause_resume_btn["text"] = "Pause"
         self.stop_btn["state"] = "normal"
-        self.root.after(0, lambda: self.copy_files(move))
-
-    def pause_resume(self):
-        if not self.is_running:
-            return
-        self.is_paused = not self.is_paused
-        if self.is_paused:
-            self.pause_resume_btn["text"] = "Resume"
-        else:
-            self.pause_resume_btn["text"] = "Pause"
-
-    def stop_operation(self):
-        self.stop_flag = True
-        self.stop_btn["state"] = "disabled"
-
-    def copy_files(self, move=False):
         dest = self.dest_folder.get()
         if not dest or not os.path.isdir(dest):
             messagebox.showerror("Error", "Please select a valid destination folder.")
@@ -506,13 +492,17 @@ class FileFinderApp:
             self.reset_ui()
             return
 
-        errors = []
-        copied = 0
         total_files = len(files_to_copy)
         self.progress_bar["maximum"] = total_files
         self.copy_btn["state"] = "disabled"
         self.move_btn["state"] = "disabled"
 
+        # Submit the copy/move operation to the thread pool
+        self.executor.submit(self.copy_move_task, files_to_copy, dest, keep_struct, overwrite, move)
+
+    def copy_move_task(self, files_to_copy, dest, keep_struct, overwrite, move):
+        errors = []
+        copied = 0
         # Find base folder for each file (for structure)
         base_folders = sorted(self.selected_folders, key=lambda x: -len(x))
         def get_base_folder(f):
@@ -521,6 +511,7 @@ class FileFinderApp:
                     return b
             return base_folders[0] if base_folders else ""
 
+        total_files = len(files_to_copy)
         print(f"[DEBUG] Copying {len(files_to_copy)} files to {dest} (overwrite mode: {overwrite}, move: {move})")
         for i, f in enumerate(files_to_copy):
             if self.stop_flag:
@@ -529,10 +520,17 @@ class FileFinderApp:
 
             while self.is_paused:
                 self.root.update()
-                self.root.after(100)  # Check every 100ms
+                import time
+                time.sleep(0.1)  # Check every 100ms
 
             base_folder = get_base_folder(f)
             rel_path = os.path.relpath(f, base_folder) if keep_struct else os.path.basename(f)
+            if keep_struct:
+                last_folder = os.path.basename(base_folder)
+                rel_path = os.path.join(last_folder, rel_path)
+            else:
+                rel_path = os.path.basename(f) # Only filename
+
             dest_path = os.path.join(dest, rel_path)
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
 
@@ -569,15 +567,16 @@ class FileFinderApp:
                 errors.append(f"{f}: {e}")
                 print(f"[DEBUG] Error copying {dest_path}: {e}")
 
-            self.progress_bar["value"] = i + 1
-            self.progress_label.config(text=f"Processed: {i+1}/{total_files}")
+            # Update progress bar and label (thread-safe)
+            self.root.after(0, lambda: self.update_progress_bar(i + 1, total_files))
             self.root.update_idletasks()
 
-        self.reset_ui()
+        # After the loop, reset the UI (thread-safe)
+        self.root.after(0, self.reset_ui)
         msg = f"Copied {copied} files."
         if errors:
             msg += f"\n{len(errors)} errors occurred."
-        messagebox.showinfo("Done", msg)
+        self.root.after(0, lambda: messagebox.showinfo("Done", msg))
         if errors:
             errfile = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files","*.txt")], title="Save error log?")
             if errfile:
@@ -585,7 +584,11 @@ class FileFinderApp:
                     for line in errors:
                         f.write(line + "\n")
         if move and not errors:
-            self.find_files()
+            self.root.after(0, self.find_files)
+
+    def update_progress_bar(self, value, total):
+        self.progress_bar["value"] = value
+        self.progress_label.config(text=f"Processed: {value}/{total}")
 
     def get_autorename_path(self, path):
         base, ext = os.path.splitext(path)
