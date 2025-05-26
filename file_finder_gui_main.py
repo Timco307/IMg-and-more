@@ -51,6 +51,15 @@ class FileFinderApp:
         self.use_threading = False
         self.copy_queue = []
         self.copying = False
+        self.copy_total = 0
+        self.copy_index = 0
+        self.copy_errors = []
+        self.copy_copied = 0
+        self.copy_move_flag = False
+        self.copy_dest = ""
+        self.copy_keep_struct = False
+        self.copy_overwrite = ""
+        self.copy_base_folders = []
         self.build_gui()
         self.show_step(0)
 
@@ -547,104 +556,94 @@ class FileFinderApp:
         self.copy_btn["state"] = "disabled"
         self.move_btn["state"] = "disabled"
         self.copying = True
-        self.root.after(0, self.copy_move_step)
+        self.root.after(10, self.copy_move_step_nonblocking)
 
-    def copy_move_step(self):
-        if not self.copying or self.stop_flag:
-            self.copying = False
-            self.reset_ui()
-            msg = f"Copied {self.copy_copied} files."
-            if self.copy_errors:
-                msg += f"\n{len(self.copy_errors)} errors occurred."
-            messagebox.showinfo("Done", msg)
-            if self.copy_errors:
-                errfile = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files","*.txt")], title="Save error log?")
-                if errfile:
-                    with open(errfile, "w", encoding="utf-8") as f:
-                        for line in self.copy_errors:
-                            f.write(line + "\n")
-            if self.copy_move_flag and not self.copy_errors:
-                self.find_files()
-            return
-
-        if self.copy_index >= self.copy_total:
-            self.copying = False
-            self.reset_ui()
-            msg = f"Copied {self.copy_copied} files."
-            if self.copy_errors:
-                msg += f"\n{len(self.copy_errors)} errors occurred."
-            messagebox.showinfo("Done", msg)
-            if self.copy_errors:
-                errfile = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files","*.txt")], title="Save error log?")
-                if errfile:
-                    with open(errfile, "w", encoding="utf-8") as f:
-                        for line in self.copy_errors:
-                            f.write(line + "\n")
-            if self.copy_move_flag and not self.copy_errors:
-                self.find_files()
-            return
-
-        f = self.copy_queue[self.copy_index]
-        base_folders = self.copy_base_folders
-        def get_base_folder(f):
-            for b in base_folders:
-                if f.startswith(b):
-                    return b
-            return base_folders[0] if base_folders else ""
-        base_folder = get_base_folder(f)
-        rel_path = os.path.relpath(f, base_folder) if self.copy_keep_struct else os.path.basename(f)
-        if self.copy_keep_struct:
-            last_folder = os.path.basename(base_folder)
-            rel_path = os.path.join(last_folder, rel_path)
-        else:
-            rel_path = os.path.basename(f)
-        dest_path = os.path.join(self.copy_dest, rel_path)
-        try:
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-        except Exception as e:
-            self.copy_errors.append(f"Error creating directory for {dest_path}: {e}")
-            print(f"[DEBUG] Error creating directory: {e}")
-            self.copy_index += 1
-            self.root.after(1, self.copy_move_step)
-            return
-
-        try:
-            if os.path.exists(dest_path):
-                if self.copy_overwrite == "skip":
-                    print(f"[DEBUG] Skipping (exists): {dest_path}")
-                elif self.copy_overwrite == "overwrite":
-                    if self.copy_move_flag:
-                        shutil.move(f, dest_path)
-                    else:
-                        shutil.copy2(f, dest_path)
-                    self.copy_copied += 1
-                    print(f"[DEBUG] Overwrote: {dest_path}")
-                elif self.copy_overwrite == "autorename":
-                    dest_path = self.get_autorename_path(dest_path)
-                    if self.copy_move_flag:
-                        shutil.move(f, dest_path)
-                    else:
-                        shutil.copy2(f, dest_path)
-                    self.copy_copied += 1
-                    print(f"[DEBUG] Auto-renamed and copied: {dest_path}")
+    def copy_move_step_nonblocking(self):
+        # Process a batch of files per event loop to keep GUI responsive
+        BATCH_SIZE = 10
+        processed = 0
+        while self.copying and not self.stop_flag and self.copy_index < self.copy_total and processed < BATCH_SIZE:
+            f = self.copy_queue[self.copy_index]
+            base_folders = self.copy_base_folders
+            def get_base_folder(f):
+                for b in base_folders:
+                    if f.startswith(b):
+                        return b
+                return base_folders[0] if base_folders else ""
+            base_folder = get_base_folder(f)
+            rel_path = os.path.relpath(f, base_folder) if self.copy_keep_struct else os.path.basename(f)
+            if self.copy_keep_struct:
+                last_folder = os.path.basename(base_folder)
+                rel_path = os.path.join(last_folder, rel_path)
             else:
-                if self.copy_move_flag:
-                    shutil.move(f, dest_path)
-                else:
-                    shutil.copy2(f, dest_path)
-                self.copy_copied += 1
-                print(f"[DEBUG] Copied: {dest_path}")
-        except Exception as e:
-            self.copy_errors.append(f"{f}: {e}")
-            print(f"[DEBUG] Error copying {dest_path}: {e}")
-            print(traceback.format_exc())
+                rel_path = os.path.basename(f)
+            dest_path = os.path.join(self.copy_dest, rel_path)
+            try:
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            except Exception as e:
+                self.copy_errors.append(f"Error creating directory for {dest_path}: {e}")
+                print(f"[DEBUG] Error creating directory: {e}")
+                self.copy_index += 1
+                processed += 1
+                continue
 
-        self.copy_index += 1
+            try:
+                if os.path.exists(dest_path):
+                    if self.copy_overwrite == "skip":
+                        print(f"[DEBUG] Skipping (exists): {dest_path}")
+                    elif self.copy_overwrite == "overwrite":
+                        if self.copy_move_flag:
+                            shutil.move(f, dest_path)
+                        else:
+                            shutil.copy2(f, dest_path)
+                        self.copy_copied += 1
+                        print(f"[DEBUG] Overwrote: {dest_path}")
+                    elif self.copy_overwrite == "autorename":
+                        dest_path = self.get_autorename_path(dest_path)
+                        if self.copy_move_flag:
+                            shutil.move(f, dest_path)
+                        else:
+                            shutil.copy2(f, dest_path)
+                        self.copy_copied += 1
+                        print(f"[DEBUG] Auto-renamed and copied: {dest_path}")
+                else:
+                    if self.copy_move_flag:
+                        shutil.move(f, dest_path)
+                    else:
+                        shutil.copy2(f, dest_path)
+                    self.copy_copied += 1
+                    print(f"[DEBUG] Copied: {dest_path}")
+            except Exception as e:
+                self.copy_errors.append(f"{f}: {e}")
+                print(f"[DEBUG] Error copying {dest_path}: {e}")
+                print(traceback.format_exc())
+
+            self.copy_index += 1
+            processed += 1
+
         self.progress_bar["value"] = self.copy_index
         self.progress_label.config(text=f"Processed: {self.copy_index}/{self.copy_total}")
         self.root.update_idletasks()
-        # Schedule next file after a short delay to keep GUI responsive
-        self.root.after(1, self.copy_move_step)
+
+        if self.stop_flag or self.copy_index >= self.copy_total:
+            self.copying = False
+            self.reset_ui()
+            msg = f"Copied {self.copy_copied} files."
+            if self.copy_errors:
+                msg += f"\n{len(self.copy_errors)} errors occurred."
+            messagebox.showinfo("Done", msg)
+            if self.copy_errors:
+                errfile = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files","*.txt")], title="Save error log?")
+                if errfile:
+                    with open(errfile, "w", encoding="utf-8") as f:
+                        for line in self.copy_errors:
+                            f.write(line + "\n")
+            if self.copy_move_flag and not self.copy_errors:
+                self.find_files()
+            return
+
+        # Schedule next batch
+        self.root.after(10, self.copy_move_step_nonblocking)
 
     def update_progress_bar(self, value, total):
         self.progress_bar["value"] = value
