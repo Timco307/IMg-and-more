@@ -27,7 +27,7 @@ def format_size(size):
     return f"{size:.2f} {unit}"
 
 class FileFinderApp:
-    def __init__(self, root, use_threading=True):
+    def __init__(self, root, use_threading=False):
         self.root = root
         self.root.title("Super Easy File Finder")
         self.selected_folders = []
@@ -46,7 +46,7 @@ class FileFinderApp:
         self.is_running = False
         self.is_paused = False
         self.stop_flag = False
-        # Remove threading, always run in main thread
+        # No threading at all
         self.executor = None
         self.use_threading = False
         self.build_gui()
@@ -649,15 +649,22 @@ if __name__ == "__main__":
     except Exception as e:
         print("Could not start GUI. Error:", e)
         print("This program requires a graphical environment to run.")
+        input("Press Enter to exit...")
         sys.exit(1)
 
-    app = FileFinderApp(root, use_threading=False)
-    # Open maximized/fullscreen if possible, else fallback to geometry
     try:
-        root.state('zoomed')  # Windows
-    except Exception:
+        app = FileFinderApp(root, use_threading=False)
+        # Open maximized/fullscreen if possible, else fallback to geometry
         try:
-            root.attributes('-zoomed', True)  # Linux
+            root.state('zoomed')  # Windows
         except Exception:
-            root.geometry("1200x800")
-    root.mainloop()
+            try:
+                root.attributes('-zoomed', True)  # Linux
+            except Exception:
+                root.geometry("1200x800")
+        root.mainloop()
+    except Exception as e:
+        print("An error occurred while running the app:")
+        traceback.print_exc()
+        input("Press Enter to exit...")
+        sys.exit(1)
