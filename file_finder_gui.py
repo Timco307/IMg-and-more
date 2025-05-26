@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from collections import defaultdict
@@ -184,6 +185,19 @@ class FileFinderApp:
         for step in self.steps:
             step.grid(row=0, column=0, sticky="nsew")
             step.grid_remove()
+
+        # Make the main window expand and fill
+        self.root.update_idletasks()
+        self.root.geometry(f"{max(self.root.winfo_screenwidth()//1.2, 900)}x{max(self.root.winfo_screenheight()//1.5, 600)}")
+        self.root.minsize(900, 600)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def on_close(self):
+        # Clean up and close safely
+        try:
+            self.root.destroy()
+        except Exception:
+            sys.exit(0)
 
     def show_context_menu(self, event):
         selection = self.result_list.curselection()
@@ -630,12 +644,20 @@ class FileFinderApp:
         self.stop_btn["state"] = "disabled"
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    try:
+        root = tk.Tk()
+    except Exception as e:
+        print("Could not start GUI. Error:", e)
+        print("This program requires a graphical environment to run.")
+        sys.exit(1)
+
     app = FileFinderApp(root, use_threading=False)
-    # Open maximized/fullscreen
+    # Open maximized/fullscreen if possible, else fallback to geometry
     try:
         root.state('zoomed')  # Windows
     except Exception:
-        root.attributes('-zoomed', True)  # Linux
-    root.minsize(800, 600)
+        try:
+            root.attributes('-zoomed', True)  # Linux
+        except Exception:
+            root.geometry("1200x800")
     root.mainloop()
