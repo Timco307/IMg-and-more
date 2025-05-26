@@ -5,6 +5,7 @@ from tkinter import filedialog, messagebox, ttk
 from collections import defaultdict
 from datetime import datetime
 import concurrent.futures  # Import for threading
+import traceback # Import traceback
 
 PRESETS = {
     "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"],
@@ -532,7 +533,12 @@ class FileFinderApp:
                 rel_path = os.path.basename(f) # Only filename
 
             dest_path = os.path.join(dest, rel_path)
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            try:
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            except Exception as e:
+                errors.append(f"Error creating directory for {dest_path}: {e}")
+                print(f"[DEBUG] Error creating directory: {e}")
+                continue
 
             try:
                 if os.path.exists(dest_path):
@@ -566,6 +572,7 @@ class FileFinderApp:
             except Exception as e:
                 errors.append(f"{f}: {e}")
                 print(f"[DEBUG] Error copying {dest_path}: {e}")
+                print(traceback.format_exc()) # Print full traceback
 
             # Update progress bar and label (thread-safe)
             self.root.after(0, lambda: self.update_progress_bar(i + 1, total_files))
