@@ -27,7 +27,7 @@ def format_size(size):
     return f"{size:.2f} {unit}"
 
 class FileFinderApp:
-    def __init__(self, root):
+    def __init__(self, root, use_threading=True):
         self.root = root
         self.root.title("Super Easy File Finder")
         self.selected_folders = []
@@ -46,7 +46,12 @@ class FileFinderApp:
         self.is_running = False
         self.is_paused = False
         self.stop_flag = False
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)  # Thread pool
+        self.use_threading = use_threading
+        if use_threading:
+            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)  # Thread pool
+        else:
+            self.executor = None
+            print("Fast transfer (threading) disabled.")
         self.build_gui()
         self.show_step(0)
 
@@ -499,7 +504,10 @@ class FileFinderApp:
         self.move_btn["state"] = "disabled"
 
         # Submit the copy/move operation to the thread pool
-        self.executor.submit(self.copy_move_task, files_to_copy, dest, keep_struct, overwrite, move)
+        if self.use_threading:
+            self.executor.submit(self.copy_move_task, files_to_copy, dest, keep_struct, overwrite, move)
+        else:
+            self.copy_move_task(files_to_copy, dest, keep_struct, overwrite, move)
 
     def copy_move_task(self, files_to_copy, dest, keep_struct, overwrite, move):
         errors = []
@@ -576,7 +584,8 @@ class FileFinderApp:
 
             # Update progress bar and label (thread-safe)
             self.root.after(0, lambda: self.update_progress_bar(i + 1, total_files))
-            self.root.update_idletasks()
+            if self.use_threading:
+                self.root.update_idletasks()
 
         # After the loop, reset the UI (thread-safe)
         self.root.after(0, self.reset_ui)
@@ -617,7 +626,17 @@ class FileFinderApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = FileFinderApp(root)
+    use_threading = True
+    try:
+        app = FileFinderApp(root, use_threading=use_threading)
+    except tk.TclError as e:
+        if "no display name and no $DISPLAY" in str(e):
+            messagebox.showerror("Error", "No display found. Running in non-threaded mode.")
+            use_threading = False
+            app = FileFinderApp(root, use_threading=use_threading)
+        else:
+            raise e
+
     # Open maximized/fullscreen
     try:
         root.state('zoomed')  # Windows
